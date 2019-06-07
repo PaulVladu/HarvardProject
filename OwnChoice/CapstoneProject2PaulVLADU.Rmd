@@ -1,0 +1,548 @@
+---
+title: "Harvard Capstone Project: Own Choice Project (edx HarvardX: PH125.9x)"
+author: "Paul Daniel VLADU"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Vignette Title}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
+
+if(!require(ggplot2)) install.packages("ggplot2", repos = "http://cran.us.r-project.org")
+if(!require(gridExtra)) install.packages("gridExtra", repos = "http://cran.us.r-project.org")
+if(!require(knitr)) install.packages("knitr", repos = "http://cran.us.r-project.org")
+
+if(!require(naivebayes)) install.packages("naivebayes", repos = "http://cran.us.r-project.org")
+if(!require(randomForest)) install.packages("randomForest", repos = "http://cran.us.r-project.org")
+if(!require(Boruta)) install.packages("Boruta", repos = "http://cran.us.r-project.org")
+
+library(tidyverse)
+library(caret)
+
+library(knitr)
+library(ggplot2)
+library(gridExtra)
+
+library(naivebayes)
+library(randomForest)
+library(Boruta)
+
+```
+
+#Project - Heart Disease Prediction
+
+
+# Executive Summary
+This document proposes a classification solution for a dataset regarding different factors that could be used to identify the presence of heart disease.
+The dataset is from Kaggle web site : https://www.kaggle.com/ronitf/heart-disease-uci . 
+
+Though the dataset is provided on Kaggle, since Kaggle requests login credentials to get this dataset, the alternative  solution was to upload this dataset on GitHub in order to have it accessible for download in the R scripts of this project. For this reason, the dataset can be found and downloaded in the file "heart.csv" in the GitHub folder : https://github.com/PaulVladu/HarvardProject/tree/master/OwnChoice 
+
+The data is about Heart Disease and it is a subset of the original database. The dataset has 303 records and 14 variables : 13 attributes (variables) describing different conditions determinant for identifying the presence of heart disease and the class label that is to be predicted, displaying if a heart disease is present or not, for the respective patient.
+
+The variables (attributes) of the dataset are presented in the following table:
+
+<table>
+
+<tr><th>Index</th><th>Attributes</th><th>Description</th></tr>
+
+<tr><td>1</td><td>age</td><td>the age of the patient</td></tr>
+<tr><td>2</td><td>sex</td><td>the sex of the patient</td></tr>
+<tr><td>3</td><td>cp</td><td>chest pain with 4 posible values (0,1,2,3)</td></tr>
+
+<tr><td>4</td><td>trestbps</td><td>resting blood pressure</td></tr>
+<tr><td>5</td><td>chol</td><td>serum cholestoral in mg/dl </td></tr>
+<tr><td>6</td><td>fbs</td><td>fasting blood sugar bigger than 120 mg/dl</td></tr>
+
+<tr><td>7</td><td>restecg</td><td>resting electrocardiographic results (values 0,1,2)</td></tr>
+<tr><td>8</td><td>thalach</td><td>maximum heart rate achieved </td></tr>
+<tr><td>9</td><td>exang</td><td>exercise induced angina</td></tr>
+
+<tr><td>10</td><td>oldpeak</td><td>oldpeak = ST depression induced by exercise relative to rest</td></tr>
+<tr><td>11</td><td>slope</td><td>the slope of the peak exercise ST segment </td></tr>
+<tr><td>12</td><td>ca</td><td>number of major vessels (0-3) colored by fluorosopy </td></tr>
+
+<tr><td>13</td><td>thal</td><td>a blood disorder called thalassemia, with the following possible values:<br>
+<ul>
+<li>1 = normal<li>2 = fixed defect<li>3 = reversable defect 
+</ul></td></tr>
+<tr><td>14</td><td>target</td><td>the label to predict : 1 if heart disease is present or 0 if the disease is not present</td></tr>
+
+</table>
+
+The dataset will be split into a train dataset and a test dataset, the test dataset containing 20% of the records of the original data set. The objective of this project is to propose a classification model, to train it on the train dataset and then to use the model to predict the variable of interest on the test data set as if it were unknown. 
+
+The performance measure of the model will be the accuracy of the prediction. The accuracy of the prediction will be calculated by comparing the predicted labels versus the existing one in the test dataset.
+
+
+# Analysis section
+```{r, echo=FALSE ,, results='asis' }
+
+# download the file
+download.file(url = "https://raw.githubusercontent.com/PaulVladu/HarvardProject/master/OwnChoice/heart.csv", destfile = "heart.csv")
+
+dfheart <- read.csv("heart.csv", header = TRUE)
+
+# clean missing values for [thal] variable
+dfheart$thal[dfheart$thal==0]<-1
+
+# define the column names for the dataset
+colnames(dfheart)<-c("age","sex","cp","trestbps","chol","fbs","restecg","thalach","exang","oldpeak","slope","ca","thal","target")
+
+# transform to nominal a group of numerical attributes
+dfheart<-dfheart %>% mutate(age_range = as.factor(ifelse(age<41,"*_40", ifelse(age<51,"41_50",ifelse(age<61,"51_60",ifelse(age<71,"61_70","71_*"))))))
+
+dfheart <-dfheart%>%mutate(sex = as.factor(sex))
+# cp = chest pain
+dfheart <-dfheart%>%mutate(cp = as.factor(cp))
+# trest bps :Resting blood pressure
+#dfheart <-dfheart%>%mutate(trestbps = as.factor(trestbps))
+# chol :cholesterol levels
+#dfheart <-dfheart%>%mutate(chol = as.factor(chol))
+# fbs :fasting blood sugar ( > 120 mg/dl )
+dfheart <-dfheart%>%mutate(fbs = as.factor(fbs))
+# restecg :Resting electrocardiographic result
+dfheart <-dfheart%>%mutate(restecg = as.factor(restecg))
+
+# thalach : max heart rate achived
+#dfheart <-dfheart%>%mutate(thalach = as.numeric(thalach))
+
+# exang : exercise induced angina 
+dfheart <-dfheart%>%mutate(exang = as.factor(exang))
+# oldpeak : ST depression induced by exercise relative to rest 
+# dfheart <-dfheart%>%mutate(oldpeak = as.factor(oldpeak))
+
+# slope : the slope of the peak exercise ST segment  
+dfheart <-dfheart%>%mutate(slope = as.factor(slope))
+#ca : number of major vessels (0-3) colored by fluorosopy 
+dfheart <-dfheart%>%mutate(ca = as.factor(ca))
+
+# thal : 3 = normal; 6 = fixed defect; 7 = reversable defect
+dfheart <-dfheart%>%mutate(thal = as.factor(thal))
+ 
+# target : 3 = normal; 6 = fixed defect; 7 = reversable defect
+dfheart <-dfheart%>%mutate(target = as.factor(target))
+
+
+# prepare the test set as well as the train set
+set.seed(1)
+test_index <- createDataPartition(y = dfheart$target, times = 1, p = 0.2, list = FALSE)
+dftrain <- dfheart[-test_index,]
+temp0 <- dfheart[test_index,]
+
+
+
+# insure that items in the test set can be found in the train set as well
+
+temp1 <- temp0 %>% semi_join(dftrain, by = "age_range")
+removed <- anti_join(temp0, temp1, by = "age_range")
+dftrain <- rbind(dftrain, removed)
+
+temp0 <- temp1 %>% semi_join(dftrain, by = "sex")
+removed <- anti_join(temp1, temp0, by = "sex")
+dftrain <- rbind(dftrain, removed)
+
+temp1 <- temp0 %>% semi_join(dftrain, by = "cp")
+removed <- anti_join(temp0, temp1, by = "cp")
+dftrain <- rbind(dftrain, removed)
+
+
+temp0 <- temp1 %>% semi_join(dftrain, by = "fbs")
+removed <- anti_join(temp1, temp0, by = "fbs")
+dftrain <- rbind(dftrain, removed)
+
+temp1 <- temp0 %>% semi_join(dftrain, by = "exang")
+removed <- anti_join(temp0, temp1, by = "exang")
+dftrain <- rbind(dftrain, removed)
+
+temp0 <- temp1 %>% semi_join(dftrain, by = "restecg")
+removed <- anti_join(temp1, temp0, by = "restecg")
+dftrain <- rbind(dftrain, removed)
+
+temp1 <- temp0 %>% semi_join(dftrain, by = "ca")
+removed <- anti_join(temp0, temp1, by = "ca")
+dftrain <- rbind(dftrain, removed)
+
+temp0 <- temp1 %>% semi_join(dftrain, by = "slope")
+removed <- anti_join(temp1, temp0, by = "slope")
+dftrain <- rbind(dftrain, removed)
+
+temp1 <- temp0 %>% semi_join(dftrain, by = "thal")
+removed <- anti_join(temp0, temp1, by = "thal")
+
+dftrain <- rbind(dftrain, removed)
+dftest <- temp1
+
+rm(temp0, temp1, dfheart)
+
+no_recs_train <-nrow(dftrain)
+no_recs_test <-nrow(dftest)
+```
+## Data Cleansing & Preparation
+
+After running the scripts, we obtain two main data sets :
+
+ * a train dataset of `r no_recs_train` records , called dftrain
+ * a test dataset of `r no_recs_test` records , called dftest
+
+The train dataset will be used to train a classification model. The performance of the model will be then measured by calculating the accuracy of the predictions on the test dataset. The model will predict [target], the variable of interest on the test dataset, as if it were unknown, and then the accuracy will be calculated for the predicted labels versus the real ones, in the test dataset.
+
+During the preparation phase we create a new feature called "age_range", derived from the existing feature "age", that replaces the variable "age", and that organizes the dataset into 5 categories (or bins):
+
+ * [*_40]  : describes patient up to 40 years old
+ * [41_50] : describes patient between 41 and 50 years old
+ * [51_60] : describes patient between 51 and 60 years old
+ * [61_70] : describes patient between 61 and 70 years old
+ * [71_*]  : describes patient older than 71 years old
+
+
+## Initial Data Exploration
+
+### Variable of interest : [target]
+The variable of interest (to predict) is the attribute "target" in the dataset, and for this reason we start displaying a graph that presents the distribution of this variable in the train dataset.
+
+```{r, echo=FALSE, results='asis',  fig.width=7 ,fig.height=5}
+dftrain%>%ggplot(aes(target , fill=target))+geom_bar(stat="count") +ggtitle(label="Distribution of [target] variable in the dataset", subtitle = "[target] inidcates the presence of Heart Disease")+scale_fill_discrete(name = "Heart Disease", labels=c("0 - No", "1 - Yes"))
+```
+
+As noticed in the graph, the label to predict is relatively well balanced in the train dataset and that is helpful in the classifying model towards a better accuracy.
+
+
+###Variable : [age_range]
+
+As one of the preprocessing operations was the binning of the age variable into 5 bins and thus engineering the new feature "age_range", the following graph displays the distribution of the variable of interest by this new "age_range" variable.
+
+
+```{r, echo=FALSE, results='asis',  fig.width=7 ,fig.height=5}
+
+dftrain%>%ggplot(aes(age_range , fill=target))+geom_bar(stat="count", position="fill")+ggtitle(label="Distribution of [target] variable by [age_range]", subtitle = "[target] inidcates the presence of Heart Disease")+scale_fill_discrete(name = "Heart Disease", labels=c("0 - No", "1 - Yes"))
+
+```
+
+We notice that heart disease has prevalence in subjects up to 50 years old or older than 71 years old.
+
+###Variable : [sex]
+
+```{r, echo=FALSE, results='asis',  fig.width=7 ,fig.height=5}
+
+dftrain%>%mutate(sex = ifelse(sex==0,'woman', 'man'))%>%ggplot(aes(sex , fill=target))+geom_bar(stat="count", position="fill")+ggtitle(label="Distribution of [target] variable by [sex]", subtitle = "[target] inidcates the presence of Heart Disease")+scale_fill_discrete(name = "Heart Disease", labels=c("0 - No", "1 - Yes"))
+
+```
+
+The dataset displays a prevalence of heart disease for the women more than for men. Furthermore, in the graph below we notice that the dataset displays all women under 50 years old affected by a heart disease.
+
+
+```{r, echo=FALSE, results='asis',  fig.width=7 ,fig.height=5}
+
+dftrain%>%mutate(sex = ifelse(sex==0,'woman', 'man'))%>%ggplot(aes(age_range , fill=target))+geom_bar(stat="count")+ggtitle(label="Distribution of [target] variable by [age_range] split by [sex]", subtitle = "[target] inidcates the presence of Heart Disease")+scale_fill_discrete(name = "Heart Disease", labels=c("0 - No", "1 - Yes")) + facet_grid(sex~.)
+
+```
+
+
+
+
+###Variable : [cp] (chest pain)
+
+```{r, echo=FALSE, results='asis',  fig.width=7 ,fig.height=5}
+
+dftrain%>%mutate(chest_pain = cp)%>%ggplot(aes(chest_pain , fill=target))+geom_bar(stat="count", position="fill")+ggtitle(label="Distribution of [target] variable by [cp] (chest pain)", subtitle = "[target] inidcates the presence of Heart Disease")+scale_fill_discrete(name = "Heart Disease", labels=c("0 - No", "1 - Yes"))
+
+
+```
+
+This feature seems to have quite some predicitcive power, aspect that will be presented in more details in the "Insights"" section.
+
+###Variable : [trestbps] (resting blood pressure)
+
+```{r, echo=FALSE, results='asis',  fig.width=7 ,fig.height=5}
+
+dftrain%>%ggplot(aes(x=target, y=trestbps , fill=target))+ geom_boxplot()+ labs(y="resting blood pressure", x="Target") + ggtitle(label="Distribution of [target] variable by [trestbps]", subtitle = "[target] inidcates the presence of Heart Disease")+scale_fill_discrete(name = "Heart Disease", labels=c("0 - No", "1 - Yes"))
+
+
+```
+
+In this graph for this [trestbps] variables we do not see a much of a difference between those affected by a heart disease and those that are healthy.
+
+###Variable : [chol] (serum cholestoral in mg/dl)
+
+```{r, echo=FALSE, results='asis',  fig.width=7 ,fig.height=5, fig.show = 'hold'}
+
+dftrain%>%ggplot(aes(x=target, y=chol , fill=target))+ geom_boxplot()+ labs(y="serum cholestoral in mg/dl", x="Target") + ggtitle(label="Distribution of [target] variable by [chol]", subtitle = "[target] inidcates the presence of Heart Disease")+scale_fill_discrete(name = "Heart Disease", labels=c("0 - No", "1 - Yes"))
+
+
+dftrain%>%mutate(sex = ifelse(sex==0,'woman', 'man'))%>%ggplot() + geom_boxplot(aes(x=target, y=chol, fill = age_range))+facet_grid(sex ~ .) + ggtitle(label="Distribution of [target] variable by [chol], by [age_range], by [sex]", subtitle = "[target] inidcates the presence of Heart Disease")
+
+```
+
+Surprisingly, this variable [chol] indicating the level of cholesterol does not offer a clear indication of a visible impact on the cause of a heart disease, even if broken down by [sex] and [age_range], though we might sense some incomplete data for healthy women.
+
+
+###Variable : [fbs] (fasting blood sugar bigger than 120 mg/dl)
+
+```{r, echo=FALSE, results='asis',  fig.width=7 ,fig.height=5}
+
+dftrain%>%mutate(fbs = ifelse(fbs==0,'no', 'yes'))%>%ggplot(aes(fbs , fill=target))+geom_bar(stat="count", position="fill")+ggtitle(label="Distribution of [target] variable by [fbs]", subtitle = "[target] inidcates the presence of Heart Disease")+scale_fill_discrete(name = "Heart Disease", labels=c("0 - No", "1 - Yes")) +labs(x="fasting blood sugar bigger than 120 mg/dl")
+
+```
+This variable [fbs] does not show too much of a difference between those with heart disease and those with no heart disease. usually, levels of fbs higher then 120mg/dl will indicate a pre-diabetes or diabetes conditions which somehow is considered to be a cause in aparition and evolution of a heart disease. However, very possible, once  the diabetes condition aknowledged, it is very possible that the patientes are in constant monitoring of their health and that might be determinant in preventing a heart disease or its evolution.
+
+
+###Variable : [restecg] (resting electrocardiographic)
+
+```{r, echo=FALSE, results='asis',  fig.width=7 ,fig.height=5}
+
+dftrain%>%ggplot(aes(restecg , fill=target))+geom_bar(stat="count", position="fill")+ggtitle(label="Distribution of [target] variable by [restecg]", subtitle = "[target] inidcates the presence of Heart Disease")+scale_fill_discrete(name = "Heart Disease", labels=c("0 - No", "1 - Yes")) +labs(x="resting electrocardiographic")
+
+```
+
+
+
+
+###Variable : [thalach] (maximum heart rate achieved)
+
+```{r, echo=FALSE, results='asis',  fig.width=7 ,fig.height=5}
+
+dftrain%>%ggplot(aes(x=target, y=thalach , fill=target))+ geom_boxplot()+ labs(y="maximum heart rate achieved", x="Target") + ggtitle(label="Distribution of [target] variable by [thalach]", subtitle = "[target] inidcates the presence of Heart Disease")+scale_fill_discrete(name = "Heart Disease", labels=c("0 - No", "1 - Yes"))
+
+
+```
+
+
+
+###Variable : [exang] (exercise induced angina)
+
+```{r, echo=FALSE, results='asis',  fig.width=7 ,fig.height=5}
+
+dftrain%>%mutate(exang = ifelse(fbs==0,'no', 'yes'))%>%ggplot(aes(exang , fill=target))+geom_bar(stat="count", position="fill")+ggtitle(label="Distribution of [target] variable by [exang]", subtitle = "[target] inidcates the presence of Heart Disease")+scale_fill_discrete(name = "Heart Disease", labels=c("0 - No", "1 - Yes")) +labs(x="exercise induced angina")
+
+```
+
+
+
+###Variable : [oldpeak] (ST depression induced by exercise relative to rest)
+
+```{r, echo=FALSE, results='asis',  fig.width=7 ,fig.height=5}
+
+dftrain%>%ggplot(aes(x=target, y=oldpeak , fill=target))+ geom_boxplot()+ labs(y="ST depression induced by exercise relative to rest", x="Target") + ggtitle(label="Distribution of [target] variable by [oldpeak]", subtitle = "[target] inidcates the presence of Heart Disease")+scale_fill_discrete(name = "Heart Disease", labels=c("0 - No", "1 - Yes"))
+
+
+```
+
+
+###Variable : [slope] (the slope of the peak exercise ST segment)
+
+```{r, echo=FALSE, results='asis',  fig.width=7 ,fig.height=5}
+
+dftrain%>%ggplot(aes(slope , fill=target))+geom_bar(stat="count", position="fill")+ggtitle(label="Distribution of [target] variable by [slope]", subtitle = "[target] inidcates the presence of Heart Disease")+scale_fill_discrete(name = "Heart Disease", labels=c("0 - No", "1 - Yes")) +labs(x="the slope of the peak exercise ST segment")
+
+```
+
+
+###Variable : [ca] (number of major vessels (0-3) colored by fluorosopy)
+
+```{r, echo=FALSE, results='asis',  fig.width=7 ,fig.height=5}
+
+dftrain%>%ggplot(aes(ca , fill=target))+geom_bar(stat="count", position="fill")+ggtitle(label="Distribution of [target] variable by [ca]", subtitle = "[target] inidcates the presence of Heart Disease")+scale_fill_discrete(name = "Heart Disease", labels=c("0 - No", "1 - Yes")) +labs(x="number of major vessels (0-3) colored by fluorosopy")
+
+dftrain%>%ggplot(aes(ca , fill=target))+geom_bar(stat="count")+ggtitle(label="Distribution of [target] variable by [ca]", subtitle = "[target] inidcates the presence of Heart Disease")+scale_fill_discrete(name = "Heart Disease", labels=c("0 - No", "1 - Yes")) +labs(x="number of major vessels (0-3) colored by flourosopy")
+
+```
+From the graphs above we notice that those who have this variable [ca] = 0 are exposed to a 75% chance risk of having a heart disease.
+
+
+###Variable : [thal] (a blood disorder called thalassemia)
+
+```{r, echo=FALSE, results='asis',  fig.width=7 , ,fig.height=5}
+
+dftrain%>%ggplot(aes(thal , fill=target))+geom_bar(stat="count", position="fill")+ggtitle(label="Distribution of [target] variable by [thal]", subtitle = "[target] inidcates the presence of Heart Disease")+scale_fill_discrete(name = "Heart Disease", labels=c("0 - No", "1 - Yes")) +labs(x="a blood disorder called thalassemia")
+
+
+dftrain%>%ggplot(aes(thal , fill=target))+geom_bar(stat="count")+ggtitle(label="Distribution of [target] variable by [thal]", subtitle = "[target] inidcates the presence of Heart Disease")+scale_fill_discrete(name = "Heart Disease", labels=c("0 - No", "1 - Yes")) +labs(x="a blood disorder called thalassemia")
+
+```
+
+
+## Insights gained & modeling approach
+
+### Insights gained
+
+Following the graphs of the variables in the model,  we can notice just at a first glance the power of prediction of some of the variables and how unimportant others could be.
+For example, looking at the boxplot graph for the variable  [thalach] (maximum heart rate achieved), it is very clear that for people in the dataset for which this variable is bigger than 150, it is a very high chance they might have a heart disease. Also, circa 70% of those with this parameter thalach<=150 do not have heart disease. 
+
+Indeed, if we draw the graph for the train dataset, with the dataset split in two, those with thalach>150 and the rest, we can notice the above mentioned insights.
+
+```{r, echo=FALSE, results='asis',  fig.width=7 ,fig.height=5}
+
+dftrain%>%mutate(talach =ifelse(thalach>150, "dataset for talach > 150", "dataset for talach <= 150") ) %>%ggplot(aes(x=talach, fill = target ))+geom_bar(stat="count", position="fill")+ggtitle(label="Distribution of [target] variable by [thalach]", subtitle = "[target] inidcates the presence of Heart Disease")+scale_fill_discrete(name = "Heart Disease", labels=c("0 - No", "1 - Yes"))
+```
+
+A similarly powerful variable in the model, easy to notice at first glance, it the variable [ca] (number of major vessels (0-3) colored by fluoroscopy) where those that have this parameter ca=0 could be 75% at risk of having a heart disease.
+
+
+Another variable that visibly has power of prediction, is the variable [cp] (chest pain) - just looking at its graph in the section "Initial Data Exploration" we can conclude that people that proves chest pain of type 1 or 2 have at least 75% chance of having a heart disease meanwhile, circa 75% people with no chest pain (cp = 0) are actually healthy.
+Furthermore, if we plot the graph of counts distribution of the population by type of chest pain, we realize that the majority of the population in the dataset has the variable cp with the values 0,1 or 2 - and from here the visualization gives us a clue about the power of prediction for this variable [cp]
+
+```{r, echo=FALSE, results='asis',  fig.width=7 ,fig.height=5}
+
+dftrain%>%mutate(chest_pain = cp)%>%ggplot(aes(chest_pain , fill=target))+geom_bar(stat="count")+ggtitle(label="Distribution of [target] variable by [cp] (chest pain)", subtitle = "[target] inidcates the presence of Heart Disease")+scale_fill_discrete(name = "Heart Disease", labels=c("0 - No", "1 - Yes"))
+
+```
+
+So far we just saw some example about how using visualization we can get some strong clues about what kind of power of prediction some variable might have in the final model. 
+
+At the opposite perspective, we can use the same visualization items in the section "Initial Data Exploration" to get an idea of how unimportant some other variable might be, thus getting a first impression about what variable could be left out since they do not bring too much benefits in the prediction process.
+
+In this regard we can notice the graphs for the variable [trestbps] (resting blood pressure) , [chol] (serum cholestoral in mg/dl) and [fbs] (fasting blood sugar bigger than 120 mg/dl) and we notice that they do not make too much of a difference between those who have a heart disease and those who do not have it.
+
+### Features selection
+
+In the effort to make this features selection more accurate, and thus to move from simple observation on the presented vizualizations to a more scientific way to select the features, the current project makes appeal to an R package developped specifically for features selection, the package "Boruta". Using this package, we can calculate and then plot features importance in the model, thus obtaining the following visual:
+
+
+```{r, echo=FALSE}
+
+dftrain<-dftrain%>%select(-age)
+set.seed(1)
+boruta.train <- Boruta(target~., data = dftrain, doTrace = 2)
+#print(boruta.train)
+
+```
+
+```{r, echo=FALSE, results='asis',  fig.width=7, fig.height=7}
+
+plot(boruta.train, xlab = "", xaxt = "n")
+lz<-lapply(1:ncol(boruta.train$ImpHistory),function(i)
+  boruta.train$ImpHistory[is.finite(boruta.train$ImpHistory[,i]),i])
+ names(lz) <- colnames(boruta.train$ImpHistory)
+Labels <- sort(sapply(lz,median))
+ axis(side = 1,las=2,labels = names(Labels),
+       at = 1:ncol(boruta.train$ImpHistory), cex.axis = 0.7)
+
+```
+
+From the graph above - as obtained with the package "Boruta" - we are indicated with the boxplot in green what are the variables with the most impact in the prediction.
+
+Not surprisingly, many of these variables were noticed as having power of prediction just scanning the graphs presented in the sections above, however, the package "Boruta" not only that confirmed the insights gained through visualization but also offers a ranking of these variables by their importance, in the model.
+
+## Modeling
+
+For the modeling, using the insights gained through visualization of different variables as well as the results from applying "Boruta" package on train dataset, we retain the following variables with the most predictive power:
+
+  * ca
+  * cp
+  * thal
+  * oldpeak
+  * thalach
+  * sex
+  * exang
+  * slope
+  * age_range
+
+```{r, echo=FALSE}
+
+dftrain<-dftrain%>%select(ca, cp, thal, oldpeak, thalach, sex, exang, slope, age_range, target)
+
+```
+
+The current project not only that will predict the labels in the test dataset but also will present three different algorithms used in this problem of classification, namely :
+
+  * naive Bayes
+  * logisitc regression
+  * random forest
+  
+### naive Bayes
+
+```{r, echo=FALSE}
+
+nb <- naive_bayes(as.matrix(select(dftrain,-target)),dftrain$target)
+pred_nb <-predict(nb, newdata = dftest)
+cm_nb<-confusionMatrix(pred_nb, dftest$target)
+
+nb_acc<-cm_nb$overall["Accuracy"]
+nb_se<-cm_nb$byClass["Sensitivity"]
+nb_sp<-cm_nb$byClass["Specificity"]
+nb_pr<-cm_nb$byClass["Precision"]
+
+
+cm_nb$overall
+
+```
+
+### logisitc regression
+
+```{r, echo=FALSE}
+
+#------Logistic regression
+lg <- glm(target~.,data=dftrain,family=binomial(link="logit"))
+lg_predict<-predict(lg,type="response",newdata=dftest)
+lg_result<-as.factor(ifelse(lg_predict>0.5,1,0))
+cm_lr<-confusionMatrix(lg_result, dftest$target)
+
+lr_acc<-cm_lr$overall["Accuracy"]
+lr_se<-cm_lr$byClass["Sensitivity"]
+lr_sp<-cm_lr$byClass["Specificity"]
+lr_pr<-cm_lr$byClass["Precision"]
+
+
+cm_lr$overall
+
+```
+
+
+### random forest
+
+```{r, echo=FALSE}
+
+#------Random Forest
+
+rf <- randomForest(dftrain%>%select(-target), dftrain$target)
+rf_result <-predict(rf,newdata = dftest%>%select(-target))
+cm_rf<-confusionMatrix(rf_result, dftest$target)
+
+rf_acc<-cm_rf$overall["Accuracy"]
+rf_se<-cm_rf$byClass["Sensitivity"]
+rf_sp<-cm_rf$byClass["Specificity"]
+rf_pr<-cm_rf$byClass["Precision"]
+
+
+cm_rf$overall
+
+```
+
+
+# Results
+
+After executing the chosen classification algorithms (naive Bayes, logistic regression, random forest), we have the following table with the results :
+
+
+<table>
+<tr><th>Algorithm</th><th>Accuracy</th><th>Sensitivity</th><th>Specificity</th><th>Precision</th></tr>
+
+<tr><td>naive Bayes</td><td>`r nb_acc`</td><td>`r nb_se`</td><td>`r nb_sp`</td><td>`r nb_pr`</td></tr>
+<tr><td>logisitic regression</td><td>`r lr_acc`</td><td>`r lr_se`</td><td>`r lr_sp`</td><td>`r lr_pr`</td></tr>
+<tr><td>random forest</td><td>`r rf_acc`</td><td>`r rf_se`</td><td>`r rf_sp`</td><td>`r rf_pr`</td></tr>
+
+</table>
+
+
+# Conclusion
+
+
+Among the algorithms chosen for this classification problem we notice in the "Results" section the poor performance of "naive Bayes" and thus the indication of such weak results coming from the assumption of independency that "naive Bayes" algorithm relies on.
+
+
+It is very clear that random forest algorithm offers the best solution for this dataset and problem, scoring high not only for accuracy but also for the other indicators: sensitivity, specificity and precision.
+
+
+We conclude that the model proposed, with the 9 features identified with the Boruta package and the dependent variable "target" - the variable of interest that is to be predicted - together with the "random forest" algorithm, makes the best solution in predicting the presence of the heart disease. With the model proposed we get an accuracy of `r rf_acc`.
+
