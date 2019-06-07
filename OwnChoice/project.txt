@@ -1,0 +1,2 @@
+This project proposes a classification solution for a dataset regarding different factors that could be used to identify the presence of heart disease.
+The dataset is from Kaggle web site : https://www.kaggle.com/ronitf/heart-disease-uci . 
